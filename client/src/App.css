@@ -5,38 +5,81 @@
   text-align: center;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
-}
-
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
 }
 
 .card {
   padding: 2em;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 500px;
 }
 
-.read-the-docs {
-  color: #888;
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form input,
+.form textarea {
+  padding: 0.5rem;
+  font-size: 1rem;
+}
+
+.drafts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+  max-width: 800px;
+}
+
+.draft-card {
+  border: 1px solid #444;
+  background-color: #222;
+  border-radius: 8px;
+  padding: 1.5rem;
+  text-align: left;
+}
+
+.draft-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.status-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.status-CREATED { background-color: #666; color: white; }
+.status-IN_REVIEW { background-color: #d97706; color: white; }
+.status-APPROVED { background-color: #059669; color: white; }
+.status-REJECTED { background-color: #dc2626; color: white; }
+
+.actions {
+  margin-top: 1.5rem;
+  border-top: 1px solid #555;
+  padding-top: 1rem;
+}
+
+.buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+button {
+  cursor: pointer;
 }

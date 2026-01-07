@@ -1,37 +1,12 @@
 import express from 'express';
-import { createDraft, Draft, drafts } from './entities/Draft';
-import { saveWorkflowSchema, WorkflowSchema, workflowSchemas } from './entities/WorkflowSchema';
-import { WorkflowDefinition } from './workflow/WorkflowDefinition';
-import { WorkflowInstance } from './workflow/WorkflowInstance';
-import { DraftContext, draftWorkflow } from './workflow/definitions/DraftWorkflow';
+import { createDraft, drafts } from './entities/Draft';
+import { saveWorkflowSchema, workflowSchemas } from './entities/WorkflowSchema';
+import { WorkflowFactory } from './workflow/WorkflowFactory';
 
 const app = express();
 const port = 3000;
 
 app.use(express.json());
-
-const buildWorkflowFromSchema = (schema: WorkflowSchema): WorkflowDefinition<DraftContext> => {
-  const definition = new WorkflowDefinition<DraftContext>(schema.initialState);
-  schema.states.forEach((state) => definition.addState(state));
-  schema.transitions.forEach((t) => definition.addTransition(t.from, t.to, t.event));
-  return definition;
-};
-
-// Helper to rehydrate workflow instance from an entity
-const getWorkflowForDraft = (draft: Draft): WorkflowInstance<DraftContext> => {
-  const context: DraftContext = { draft };
-  
-  let definition = draftWorkflow;
-  if (draft.workflowId) {
-    const schema = workflowSchemas.get(draft.workflowId);
-    if (schema) {
-      definition = buildWorkflowFromSchema(schema);
-    }
-  }
-
-  // We initialize the workflow with the draft's current status
-  return new WorkflowInstance(definition, draft.status, context);
-};
 
 // API Endpoints
 
@@ -60,7 +35,7 @@ app.post('/api/drafts', (req, res) => {
 
   const draft = createDraft(title, content, workflowId, initialStatus);
   
-  const workflow = getWorkflowForDraft(draft);
+  const workflow = WorkflowFactory.createInstance(draft);
   const allowedEvents = workflow.getAvailableEvents();
 
   res.send({ ...draft, allowedEvents });
@@ -94,7 +69,7 @@ app.get('/api/workflows', (req, res) => {
 // List all drafts
 app.get('/api/drafts', (req, res) => {
   const allDrafts = Array.from(drafts.values()).map(draft => {
-    const workflow = getWorkflowForDraft(draft);
+    const workflow = WorkflowFactory.createInstance(draft);
     return {
       ...draft,
       allowedEvents: workflow.getAvailableEvents()
@@ -111,7 +86,7 @@ app.get('/api/drafts/:id', (req, res) => {
     return;
   }
 
-  const workflow = getWorkflowForDraft(draft);
+  const workflow = WorkflowFactory.createInstance(draft);
   const allowedEvents = workflow.getAvailableEvents();
 
   res.send({ ...draft, allowedEvents });
@@ -136,7 +111,7 @@ app.post('/api/drafts/:id/transition', async (req, res) => {
 
 
   // the interesting part:
-  const workflow = getWorkflowForDraft(draft);
+  const workflow = WorkflowFactory.createInstance(draft);
   const success = await workflow.trigger(event);
 
   if (success) {

@@ -124,13 +124,14 @@ if (success) {
 ```mermaid
 classDiagram
     class MachineDefinition {
-        <<interface>>
+        <<The core object to define a state machine>>
         +getInitialState()
         +getTransition()
         +getStateDefinition()
     }
 
     class WorkflowDefinition {
+        <<A customer's workflow>>
         -states: Map
         -transitions: Array
         +addState()
@@ -138,6 +139,7 @@ classDiagram
     }
 
     class StateMachine {
+        <<Workflow engine>>
         #definition: MachineDefinition
         #currentState: Status
         #context: Context
@@ -145,6 +147,7 @@ classDiagram
     }
 
     class WorkflowInstance {
+        <<The current state of one workflow on one entity>>
         +constructor(definition, state, context)
     }
 

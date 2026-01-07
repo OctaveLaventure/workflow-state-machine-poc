@@ -33,5 +33,6 @@ export interface MachineDefinition<TContext extends Context = Context> {
     currentState: State,
     event: Event
   ): Transition<TContext> | undefined;
+  getTransitions(currentState: State): Transition<TContext>[];
   getStateDefinition(state: State): StateDefinition<TContext> | undefined;
 }

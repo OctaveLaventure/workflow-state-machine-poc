@@ -59,6 +59,10 @@ export class WorkflowDefinition<TContext extends Context = Context> {
     );
   }
 
+  public getTransitions(currentState: State): Transition<TContext>[] {
+    return this.transitions.filter((t) => t.from === currentState);
+  }
+
   public getStateDefinition(
     state: State
   ): StateDefinition<TContext> | undefined {

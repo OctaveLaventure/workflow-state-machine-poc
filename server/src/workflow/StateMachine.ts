@@ -23,6 +23,11 @@ export class StateMachine<TContext extends Context = Context> {
     return this.context;
   }
 
+  public getAvailableEvents(): Event[] {
+    const transitions = this.definition.getTransitions(this.currentState);
+    return transitions.map((t) => t.event);
+  }
+
   public async trigger(event: Event): Promise<boolean> {
     const transition = this.definition.getTransition(this.currentState, event);
 

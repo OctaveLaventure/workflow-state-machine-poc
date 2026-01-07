@@ -1,17 +1,28 @@
 import { useEffect, useState } from 'react';
 import './App.css';
+import WorkflowBuilder from './WorkflowBuilder';
 
 interface Draft {
   id: string;
   title: string;
   content: string;
   status: string;
+  workflowId?: string;
+  allowedEvents?: string[];
+}
+
+interface Workflow {
+  id: string;
+  name: string;
 }
 
 function App() {
+  const [view, setView] = useState<'drafts' | 'builder'>('drafts');
   const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>('');
 
   const fetchDrafts = async () => {
     try {
@@ -23,8 +34,19 @@ function App() {
     }
   };
 
+  const fetchWorkflows = async () => {
+    try {
+      const res = await fetch('/api/workflows');
+      const data = await res.json();
+      setWorkflows(data);
+    } catch (error) {
+      console.error('Failed to fetch workflows', error);
+    }
+  };
+
   useEffect(() => {
     fetchDrafts();
+    fetchWorkflows();
   }, []);
 
   const createDraft = async (e: React.FormEvent) => {
@@ -32,15 +54,21 @@ function App() {
     if (!title || !content) return;
 
     try {
+      const payload: { title: string; content: string; workflowId?: string } = { title, content };
+      if (selectedWorkflowId) {
+        payload.workflowId = selectedWorkflowId;
+      }
+
       const res = await fetch('/api/drafts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, content }),
+        body: JSON.stringify(payload),
       });
       const newDraft = await res.json();
       setDrafts([...drafts, newDraft]);
       setTitle('');
       setContent('');
+      setSelectedWorkflowId('');
     } catch (error) {
       console.error('Failed to create draft', error);
     }
@@ -55,7 +83,7 @@ function App() {
       });
       const data = await res.json();
       if (data.success) {
-        setDrafts(drafts.map((d) => (d.id === draftId ? data.draft : d)));
+        setDrafts(drafts.map((d) => (d.id === draftId ? { ...data.draft, allowedEvents: data.allowedEvents } : d)));
       } else {
         alert(`Transition failed: ${data.message}`);
       }
@@ -68,65 +96,91 @@ function App() {
     <div className="container">
       <h1>Workflow Demo</h1>
 
-      <div className="card">
-        <h2>Create New Draft</h2>
-        <form onSubmit={createDraft} className="form">
-          <input
-            type="text"
-            placeholder="Title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-          <textarea
-            placeholder="Content (must be > 10 chars for validation)"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-          />
-          <button type="submit">Create Draft</button>
-        </form>
+      <div className="tabs">
+        <button 
+          className={view === 'drafts' ? 'active' : ''} 
+          onClick={() => setView('drafts')}
+        >
+          Manage Drafts
+        </button>
+        <button 
+          className={view === 'builder' ? 'active' : ''} 
+          onClick={() => setView('builder')}
+        >
+          Workflow Builder
+        </button>
       </div>
 
-      <div className="drafts-list">
-        <h2>Your Drafts</h2>
-        {drafts.length === 0 ? <p>No drafts found.</p> : null}
-        
-        {drafts.map((draft) => (
-          <div key={draft.id} className="draft-card">
-            <div className="draft-header">
-              <h3>{draft.title}</h3>
-              <span className={`status-badge status-${draft.status}`}>
-                {draft.status}
-              </span>
-            </div>
-            <p>{draft.content}</p>
-            
-            <div className="actions">
-              <h4>Actions:</h4>
-              <div className="buttons">
-                {/* 
-                  Hardcoded actions based on the workflow definition. 
-                  In a real app, we might ask the backend for "available transitions".
-                */}
-                <button onClick={() => triggerTransition(draft.id, 'SUBMIT')}>
-                  Submit for Review
-                </button>
-                <button onClick={() => triggerTransition(draft.id, 'APPROVE')}>
-                  Approve
-                </button>
-                <button onClick={() => triggerTransition(draft.id, 'REJECT')}>
-                  Reject
-                </button>
-                <button onClick={() => triggerTransition(draft.id, 'RESUBMIT')}>
-                  Resubmit
-                </button>
-                <button onClick={() => triggerTransition(draft.id, 'RESET')}>
-                  Reset
-                </button>
-              </div>
-            </div>
+      {view === 'builder' ? (
+        <WorkflowBuilder />
+      ) : (
+        <>
+          <div className="card">
+            <h2>Create New Draft</h2>
+            <form onSubmit={createDraft} className="form">
+              <input
+                type="text"
+                placeholder="Title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+              <textarea
+                placeholder="Content (must be > 10 chars for validation)"
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+              />
+              <select 
+                value={selectedWorkflowId} 
+                onChange={(e) => setSelectedWorkflowId(e.target.value)}
+                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+              >
+                <option value="">Default Workflow</option>
+                {workflows.map(wf => (
+                  <option key={wf.id} value={wf.id}>{wf.name}</option>
+                ))}
+              </select>
+              <button type="submit">Create Draft</button>
+            </form>
           </div>
-        ))}
-      </div>
+
+          <div className="drafts-list">
+            <h2>Your Drafts</h2>
+            {drafts.length === 0 ? <p>No drafts found.</p> : null}
+            
+            {drafts.map((draft) => (
+              <div key={draft.id} className="draft-card">
+                <div className="draft-header">
+                  <div>
+                    <h3 style={{margin: '0 0 5px 0'}}>{draft.title}</h3>
+                    <small style={{color: '#888'}}>
+                        Workflow: {draft.workflowId ? workflows.find(w => w.id === draft.workflowId)?.name : 'Default'}
+                    </small>
+                  </div>
+                  <span className={`status-badge status-${draft.status}`}>
+                    {draft.status}
+                  </span>
+                </div>
+                <p>{draft.content}</p>
+                
+                <div className="actions">
+                  <h4>Actions:</h4>
+                  <div className="buttons">
+                    {draft.allowedEvents && draft.allowedEvents.length > 0 ? (
+                      draft.allowedEvents.map((event) => (
+                        <button key={event} onClick={() => triggerTransition(draft.id, event)}>
+                          {event}
+                        </button>
+                      ))
+                    ) : (
+                      <p>No actions available</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

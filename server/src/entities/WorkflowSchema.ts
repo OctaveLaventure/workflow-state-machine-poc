@@ -4,6 +4,12 @@ export interface ActionConfig {
   mode: 'sync' | 'async';
 }
 
+export interface ConditionConfig {
+  field: string;
+  operator: 'eq' | 'neq' | 'gt' | 'lt' | 'gte' | 'lte' | 'contains';
+  value: any;
+}
+
 export interface SerializedState {
   name: string;
   onEnter?: ActionConfig[];
@@ -15,6 +21,7 @@ export interface SerializedTransition {
   to: string;
   event: string;
   actions?: ActionConfig[];
+  conditions?: ConditionConfig[];
 }
 
 export interface WorkflowSchema {

@@ -42,6 +42,13 @@ interface ActionConfig {
   mode: 'sync' | 'async';
 }
 
+interface ConditionConfig {
+  field: string;
+  operator: 'eq' | 'neq' | 'gt' | 'lt' | 'gte' | 'lte' | 'contains';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  value: any;
+}
+
 interface ActionDefinition {
     type: string;
     label: string;
@@ -71,18 +78,27 @@ export default function WorkflowBuilder() {
   const [modalIsOpen, setIsOpen] = useState(false);
   const [selectedElement, setSelectedElement] = useState<{id: string, type: 'node' | 'edge'} | null>(null);
   const [tempActions, setTempActions] = useState<ActionConfig[]>([]);
+  const [tempConditions, setTempConditions] = useState<ConditionConfig[]>([]);
 
   // Open modal when element is clicked
   const onElementClick = (_: React.MouseEvent, element: Node | Edge) => {
       const type = 'source' in element ? 'edge' : 'node';
       setSelectedElement({ id: element.id, type });
+      
       const actions = element.data?.actions as ActionConfig[] || [];
+      const conditions = element.data?.conditions as ConditionConfig[] || [];
+      
       setTempActions(actions);
+      setTempConditions(conditions);
       setIsOpen(true);
   };
 
   const addAction = () => {
       setTempActions([...tempActions, { type: 'log', mode: 'sync', params: { message: 'Hello' } }]);
+  };
+
+  const addCondition = () => {
+      setTempConditions([...tempConditions, { field: 'draft.title', operator: 'eq', value: '' }]);
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -98,7 +114,16 @@ export default function WorkflowBuilder() {
       setTempActions(newActions);
   };
 
-  const saveActions = () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const updateCondition = (index: number, field: keyof ConditionConfig, value: any) => {
+      const newConditions = [...tempConditions];
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      newConditions[index][field] = value;
+      setTempConditions(newConditions);
+  };
+
+  const saveConfiguration = () => {
       if (!selectedElement) return;
 
       if (selectedElement.type === 'node') {
@@ -110,7 +135,11 @@ export default function WorkflowBuilder() {
       } else {
           setEdges((eds) => eds.map(e => 
               e.id === selectedElement.id 
-                  ? { ...e, data: { ...e.data, actions: tempActions }, label: `${e.label || ''} ⚡` } 
+                  ? { 
+                      ...e, 
+                      data: { ...e.data, actions: tempActions, conditions: tempConditions }, 
+                      label: `${(e.label as string).split(' ')[0]}${tempActions.length ? ' ⚡' : ''}${tempConditions.length ? ' 🔒' : ''}` 
+                    } 
                   : e
           ));
       }
@@ -147,8 +176,9 @@ export default function WorkflowBuilder() {
     const transitions = edges.map(e => ({
       from: e.source,
       to: e.target,
-      event: (e.label as string).replace(' ⚡', '') || 'EVENT',
-      actions: e.data?.actions as ActionConfig[]
+      event: (e.label as string).split(' ')[0] || 'EVENT',
+      actions: e.data?.actions as ActionConfig[],
+      conditions: e.data?.conditions as ConditionConfig[]
     }));
 
     const definition = {
@@ -178,41 +208,83 @@ export default function WorkflowBuilder() {
         isOpen={modalIsOpen}
         onRequestClose={() => setIsOpen(false)}
         style={customStyles}
-        contentLabel="Configure Actions"
+        contentLabel="Configure Element"
       >
-        <h2>Configure Actions for {selectedElement?.type} {selectedElement?.id}</h2>
-        <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+        <h2>Configure {selectedElement?.type}: {selectedElement?.id}</h2>
+        
+        <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
+            <h3>Actions</h3>
             {tempActions.map((action, idx) => (
-                <div key={idx} style={{ border: '1px solid #555', padding: '10px', marginBottom: '10px' }}>
-                    <select 
-                        value={action.type} 
-                        onChange={(e) => updateAction(idx, 'type', e.target.value)}
-                        style={{ marginRight: '10px' }}
-                    >
-                        {AVAILABLE_ACTIONS.map(opt => <option key={opt.type} value={opt.type}>{opt.label}</option>)}
-                    </select>
-                    
-                    <select 
-                        value={action.mode}
-                        onChange={(e) => updateAction(idx, 'mode', e.target.value)}
-                        style={{ marginRight: '10px' }}
-                    >
-                        <option value="sync">Sync (Blocking)</option>
-                        <option value="async">Async (Background)</option>
-                    </select>
-
+                <div key={`action-${idx}`} style={{ border: '1px solid #555', padding: '10px', marginBottom: '10px' }}>
+                    <div style={{display: 'flex', gap: '5px', marginBottom: '5px'}}>
+                      <select 
+                          value={action.type} 
+                          onChange={(e) => updateAction(idx, 'type', e.target.value)}
+                      >
+                          {AVAILABLE_ACTIONS.map(opt => <option key={opt.type} value={opt.type}>{opt.label}</option>)}
+                      </select>
+                      
+                      <select 
+                          value={action.mode}
+                          onChange={(e) => updateAction(idx, 'mode', e.target.value)}
+                      >
+                          <option value="sync">Sync</option>
+                          <option value="async">Async</option>
+                      </select>
+                   </div>
                     <input 
                         type="text" 
                         value={action.params?.message || ''} 
                         onChange={(e) => updateAction(idx, 'params.message', e.target.value)}
                         placeholder="Log Message" 
+                        style={{width: '90%'}}
                     />
+                     <button onClick={() => setTempActions(tempActions.filter((_, i) => i !== idx))} style={{float: 'right', padding: '2px 5px'}}>x</button>
                 </div>
             ))}
+            <button onClick={addAction}>+ Add Action</button>
+
+            {selectedElement?.type === 'edge' && (
+                <>
+                    <hr style={{margin: '20px 0', borderColor: '#444'}}/>
+                    <h3>Conditions (Guards)</h3>
+                    {tempConditions.map((cond, idx) => (
+                        <div key={`cond-${idx}`} style={{ border: '1px solid #774444', padding: '10px', marginBottom: '10px' }}>
+                            <input 
+                                type="text" 
+                                value={cond.field} 
+                                onChange={(e) => updateCondition(idx, 'field', e.target.value)}
+                                placeholder="Field (e.g. draft.title)" 
+                                style={{marginRight: '5px', width: '120px'}}
+                            />
+                             <select 
+                                value={cond.operator} 
+                                onChange={(e) => updateCondition(idx, 'operator', e.target.value)}
+                                style={{marginRight: '5px'}}
+                            >
+                                <option value="eq">Equals (=)</option>
+                                <option value="neq">Not Equals (!=)</option>
+                                <option value="contains">Contains</option>
+                                <option value="gt">Greater (&gt;)</option>
+                                <option value="lt">Less (&lt;)</option>
+                            </select>
+                            <input 
+                                type="text" 
+                                value={cond.value} 
+                                onChange={(e) => updateCondition(idx, 'value', e.target.value)}
+                                placeholder="Value" 
+                                style={{width: '80px'}}
+                            />
+                             <button onClick={() => setTempConditions(tempConditions.filter((_, i) => i !== idx))} style={{float: 'right', padding: '2px 5px'}}>x</button>
+                        </div>
+                    ))}
+                    <button onClick={addCondition}>+ Add Condition</button>
+                </>
+            )}
         </div>
-        <button onClick={addAction}>+ Add Action</button>
+
         <div style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
-            <button onClick={saveActions}>Save</button>
+            <button onClick={saveConfiguration}>Save Configuration</button>
             <button onClick={() => setIsOpen(false)}>Cancel</button>
         </div>
       </Modal>

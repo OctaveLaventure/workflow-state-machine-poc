@@ -1,10 +1,42 @@
-import { ActionConfig, WorkflowSchema } from '../entities/WorkflowSchema';
+import { ActionConfig, ConditionConfig, WorkflowSchema } from '../entities/WorkflowSchema';
 import { ActionRegistry } from './ActionRegistry';
-import { Context, SideEffect } from './types';
+import { ConditionValidator, Context, SideEffect } from './types';
 import { WorkflowDefinition } from './WorkflowDefinition';
 import { WorkflowInstance } from './WorkflowInstance';
 
 export class WorkflowFactory {
+  // Helper to access nested properties: "user.role" -> ctx.user.role
+  private static getNestedValue(obj: any, path: string): any {
+    return path.split('.').reduce((acc, part) => acc && acc[part], obj);
+  }
+
+  // Helper to convert ConditionConfig[] -> ConditionValidator[]
+  private static createConditions<TContext extends Context>(configs?: ConditionConfig[]): ConditionValidator<TContext>[] {
+    if (!configs || configs.length === 0) return [];
+
+    return configs.map((config) => {
+      return (ctx: TContext) => {
+        const actualValue = this.getNestedValue(ctx, config.field);
+
+        switch (config.operator) {
+          case 'eq': return actualValue == config.value;
+          case 'neq': return actualValue != config.value;
+          case 'gt': return actualValue > config.value;
+          case 'gte': return actualValue >= config.value;
+          case 'lt': return actualValue < config.value;
+          case 'lte': return actualValue <= config.value;
+          case 'contains': 
+             return Array.isArray(actualValue) 
+               ? actualValue.includes(config.value)
+               : String(actualValue).includes(String(config.value));
+          default:
+             console.warn(`Unknown operator '${config.operator}'`);
+             return false;
+        }
+      };
+    });
+  }
+
   // Helper to convert ActionConfig[] -> SideEffect[]
   private static createSideEffects<TContext extends Context>(configs?: ActionConfig[]): SideEffect<TContext>[] {
     if (!configs || configs.length === 0) return [];
@@ -42,6 +74,7 @@ export class WorkflowFactory {
 
     schema.transitions.forEach((t) => {
       definition.addTransition(t.from, t.to, t.event, {
+        conditions: this.createConditions<TContext>(t.conditions),
         onTransition: this.createSideEffects<TContext>(t.actions),
       });
     });

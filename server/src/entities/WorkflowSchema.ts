@@ -1,14 +1,27 @@
+export interface ActionConfig {
+  type: string;
+  params?: any;
+  mode: 'sync' | 'async';
+}
+
+export interface SerializedState {
+  name: string;
+  onEnter?: ActionConfig[];
+  onExit?: ActionConfig[];
+}
+
 export interface SerializedTransition {
   from: string;
   to: string;
   event: string;
+  actions?: ActionConfig[];
 }
 
 export interface WorkflowSchema {
   id: string;
   name: string;
   initialState: string;
-  states: string[];
+  states: SerializedState[];
   transitions: SerializedTransition[];
 }
 

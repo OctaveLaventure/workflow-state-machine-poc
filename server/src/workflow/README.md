@@ -4,13 +4,14 @@ This project includes a lightweight, flexible workflow engine based on a **State
 
 ## Core Concepts
 
-1.  **StateMachine**: The generic engine that handles state transitions, events, and side effects.
-2.  **WorkflowDefinition**: A builder class to easily define the structure of your workflow (states, transitions, hooks).
-3.  **WorkflowInstance**: The runtime object that associates a definition with a specific data context (e.g., a "Draft" entity) and tracks its current state.
+1.  **StateMachine**: The base engine logic. It handles the mechanics of moving from state A to state B, executing side effects, and checking guards. It relies on a `MachineDefinition` to know the rules.
+2.  **WorkflowDefinition**: The configuration object (the "Blueprint"). It explicitly defines the states, transitions, and logic hooks. It implements the `MachineDefinition` interface expected by the StateMachine.
+3.  **WorkflowInstance**: The runtime implementation (the "Runner"). It **extends** `StateMachine` and binds a specific `WorkflowDefinition` to a specific data `Context` (your entity) to track its individual lifecycle.
+4.  **WorkflowFactory**: The assembler. It is a helper service used to construct a `WorkflowInstance` by combining a Schema (data), a default Definition (code), and a Context (entity).
 
 ---
 
-## How to Create a New Workflow
+## How to Create and Use Workflows
 
 ### 1. Define the Context
 
@@ -25,78 +26,72 @@ export interface MyEntityContext extends Context {
 }
 ```
 
-### 2. Create the Definition
+### 2. Create a Definition (Code-First)
 
-Instantiate `WorkflowDefinition` with the initial state and your context type.
+Instantiate `WorkflowDefinition` with the initial state.
 
 ```typescript
 import { WorkflowDefinition } from '../WorkflowDefinition';
 
-const myWorkflow = new WorkflowDefinition<MyEntityContext>('DRAFT');
-```
+export const myEntityWorkflow = new WorkflowDefinition<MyEntityContext>('DRAFT');
 
-### 3. Add States and Side Effects
-
-You can define hooks that run when entering or exiting a state.
-
-```typescript
-myWorkflow
+myEntityWorkflow
   .addState('DRAFT', {
     onEnter: [async (ctx) => console.log('Draft started')],
   })
   .addState('PUBLISHED', {
     onEnter: [async (ctx) => sendEmailToSubscribers(ctx.entity)],
+  })
+  .addTransition('DRAFT', 'PUBLISHED', 'PUBLISH_EVENT', {
+    conditions: [(ctx) => ctx.entity.isValid()],
   });
 ```
 
-### 4. Add Transitions
+### 3. Instantiate using the Factory (Recommended)
 
-Transitions connect states via **Events**. You can optional add **Conditions** (Guards) and **Transition Side Effects**.
-
-```typescript
-myWorkflow
-  .addTransition('DRAFT', 'PUBLISHED', 'PUBLISH_EVENT', {
-    // Both conditions must return true for the transition to happen
-    conditions: [
-      (ctx) => ctx.entity.isValid(),
-      (ctx) => ctx.currentUser.isAdmin
-    ],
-    // Runs only if transition is successful
-    onTransition: [(ctx) => console.log('Publishing...')]
-  })
-  .addTransition('PUBLISHED', 'ARCHIVED', 'ARCHIVE_EVENT');
-```
-
----
-
-## How to Use the Workflow
-
-### 1. Instantiate
-
-To use the workflow for a specific entity, create a `WorkflowInstance`.
+The `WorkflowFactory` allows you to create instances in a generic way, handling both hardcoded logic and dynamic schemas from your database.
 
 ```typescript
-import { WorkflowInstance } from '../WorkflowInstance';
+import { WorkflowFactory } from '../WorkflowFactory';
 
-// Your entity from DB
+// 1. Prepare your data
 const myEntity = await db.getEntity(id);
+const context: MyEntityContext = { entity: myEntity };
 
-// Create the context
-const context = { entity: myEntity };
+// 2. (Optional) Fetch a dynamic schema if your entity uses one
+const schema = myEntity.workflowId ? await db.getSchema(myEntity.workflowId) : undefined;
 
-// Initialize instance (State is usually stored on the entity itself)
-const workflow = new WorkflowInstance(myWorkflow, myEntity.status, context);
+// 3. Create the instance
+// - If 'schema' is provided, it takes precedence.
+// - Otherwise, 'myEntityWorkflow' (default) is used.
+const workflow = WorkflowFactory.createInstance<MyEntityContext>(
+  schema, 
+  myEntityWorkflow, 
+  myEntity.status, 
+  context
+);
 ```
 
-### 2. Check State
+### 4. Interact with the Workflow
+
+#### Check State
 
 ```typescript
 console.log(workflow.getCurrentState()); // e.g. 'DRAFT'
 ```
 
-### 3. Trigger Events
+#### Get Available Actions (Dynamic UI)
 
-To change state, trigger an event. The `trigger` method returns `true` if successful, or `false` if the transition was not found or conditions failed.
+You can query the workflow to see what events are valid for the current state. This is useful for rendering buttons in your frontend.
+
+```typescript
+const allowedEvents = workflow.getAvailableEvents();
+// Result: ['PUBLISH_EVENT', 'DELETE_EVENT']
+```
+
+#### Trigger Events
+
+To change state, trigger an event. The `trigger` method returns `true` if successful.
 
 ```typescript
 const success = await workflow.trigger('PUBLISH_EVENT');
@@ -105,10 +100,15 @@ if (success) {
   // Update your database with the new state
   myEntity.status = workflow.getCurrentState();
   await db.save(myEntity);
+  
+  // You might also want to send the new allowed events to the UI
+  const newActions = workflow.getAvailableEvents();
 } else {
   console.error("Transition failed! Check conditions.");
 }
 ```
+
+---
 
 ## Structure
 
@@ -116,6 +116,7 @@ if (success) {
 - **`StateMachine.ts`**: The base logic for processing transitions.
 - **`WorkflowDefinition.ts`**: Fluent API for constructing state machines.
 - **`WorkflowInstance.ts`**: Runtime wrapper around the StateMachine for specific contexts.
+- **`WorkflowFactory.ts`**: Generic factory for instantiating workflows.
 
 ## Visual Overview
 
@@ -124,35 +125,37 @@ if (success) {
 ```mermaid
 classDiagram
     class MachineDefinition {
-        <<The core object to define a state machine>>
+        <<Interface>>
         +getInitialState()
-        +getTransition()
-        +getStateDefinition()
+        +getTransitions(state)
+        +getStateDefinition(state)
     }
 
     class WorkflowDefinition {
-        <<A customer's workflow>>
+        <<Configuration>>
         -states: Map
         -transitions: Array
         +addState()
         +addTransition()
     }
 
-    class StateMachine {
-        <<Workflow engine>>
-        #definition: MachineDefinition
-        #currentState: Status
-        #context: Context
-        +trigger(event)
+    class WorkflowFactory {
+        <<Service>>
+        +createDefinition(schema)
+        +createInstance(schema, def, state, ctx)
     }
 
     class WorkflowInstance {
-        <<The current state of one workflow on one entity>>
-        +constructor(definition, state, context)
+        <<Runtime>>
+        #currentState: State
+        #context: Context
+        +getAvailableEvents()
+        +trigger(event)
     }
 
     WorkflowDefinition ..|> MachineDefinition : implements
-    StateMachine --> MachineDefinition : uses
+    WorkflowFactory ..> WorkflowDefinition : creates
+    WorkflowFactory ..> WorkflowInstance : creates
     WorkflowInstance --|> StateMachine : extends
 ```
 

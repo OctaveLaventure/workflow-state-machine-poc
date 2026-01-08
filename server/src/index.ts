@@ -2,6 +2,7 @@ import express from 'express';
 import { createDraft, drafts } from './entities/Draft';
 import { saveWorkflowSchema, workflowSchemas } from './entities/WorkflowSchema';
 import { WorkflowFactory } from './workflow/WorkflowFactory';
+import { DraftContext, draftWorkflow } from './workflow/definitions/DraftWorkflow';
 
 const app = express();
 const port = 3000;
@@ -35,7 +36,10 @@ app.post('/api/drafts', (req, res) => {
 
   const draft = createDraft(title, content, workflowId, initialStatus);
   
-  const workflow = WorkflowFactory.createInstance(draft);
+  const ctx: DraftContext = { draft };
+  const schema = workflowId ? workflowSchemas.get(workflowId) : undefined;
+  
+  const workflow = WorkflowFactory.createInstance(schema, draftWorkflow, draft.status, ctx);
   const allowedEvents = workflow.getAvailableEvents();
 
   res.send({ ...draft, allowedEvents });
@@ -69,7 +73,9 @@ app.get('/api/workflows', (req, res) => {
 // List all drafts
 app.get('/api/drafts', (req, res) => {
   const allDrafts = Array.from(drafts.values()).map(draft => {
-    const workflow = WorkflowFactory.createInstance(draft);
+    const ctx: DraftContext = { draft };
+    const schema = draft.workflowId ? workflowSchemas.get(draft.workflowId) : undefined;
+    const workflow = WorkflowFactory.createInstance(schema, draftWorkflow, draft.status, ctx);
     return {
       ...draft,
       allowedEvents: workflow.getAvailableEvents()
@@ -86,7 +92,9 @@ app.get('/api/drafts/:id', (req, res) => {
     return;
   }
 
-  const workflow = WorkflowFactory.createInstance(draft);
+  const ctx: DraftContext = { draft };
+  const schema = draft.workflowId ? workflowSchemas.get(draft.workflowId) : undefined;
+  const workflow = WorkflowFactory.createInstance(schema, draftWorkflow, draft.status, ctx);
   const allowedEvents = workflow.getAvailableEvents();
 
   res.send({ ...draft, allowedEvents });
@@ -111,7 +119,9 @@ app.post('/api/drafts/:id/transition', async (req, res) => {
 
 
   // the interesting part:
-  const workflow = WorkflowFactory.createInstance(draft);
+  const ctx: DraftContext = { draft };
+  const schema = draft.workflowId ? workflowSchemas.get(draft.workflowId) : undefined;
+  const workflow = WorkflowFactory.createInstance(schema, draftWorkflow, draft.status, ctx);
   const success = await workflow.trigger(event);
 
   if (success) {

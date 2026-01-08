@@ -2,6 +2,8 @@ import { Draft } from '../../entities/Draft';
 import { WorkflowDefinition } from '../WorkflowDefinition';
 import { Context } from '../types';
 
+// example of how to define a workflow manually without a schema
+
 // Extend context to include our specific entity
 export interface DraftContext extends Context {
   draft: Draft;

@@ -11,6 +11,7 @@ export interface TransitionRecord {
 export class WorkflowInstance<TContext extends Context = Context> extends StateMachine<TContext> {
   private history: TransitionRecord[] = [];
 
+  // example of business logic extension: history logs, state persistence, etc.
   public async trigger(event: Event): Promise<boolean> {
     const from = this.currentState;
     const success = await super.trigger(event);

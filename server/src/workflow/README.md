@@ -7,7 +7,8 @@ This project includes a lightweight, flexible workflow engine based on a **State
 1.  **StateMachine**: The base engine logic. It handles the mechanics of moving from state A to state B, executing side effects, and checking guards. It relies on a `MachineDefinition` to know the rules.
 2.  **WorkflowDefinition**: The configuration object (the "Blueprint"). It explicitly defines the states, transitions, and logic hooks. It implements the `MachineDefinition` interface expected by the StateMachine.
 3.  **WorkflowInstance**: The runtime implementation (the "Runner"). It **extends** `StateMachine` and binds a specific `WorkflowDefinition` to a specific data `Context` (your entity) to track its individual lifecycle.
-4.  **WorkflowFactory**: The assembler. It is a helper service used to construct a `WorkflowInstance` by combining a Schema (data), a default Definition (code), and a Context (entity).
+4.  **WorkflowFactory**: The assembler. It is a helper service used to construct a `WorkflowInstance` by combining a Schema (data), a default Definition (code), and a Context (entity). It also compiles declarative rules (JSON) into executable functions.
+5.  **ActionRegistry**: A catalog of available side-effect functions that can be referenced by string in your workflow schemas.
 
 ---
 
@@ -108,6 +109,67 @@ if (success) {
 }
 ```
 
+## Advanced Features: Declarative Logic
+
+The engine supports defining logic in JSON format (via `WorkflowSchema`), allowing for "No-Code" workflow building.
+
+### 1. Registering Actions
+
+To allow the JSON schema to trigger code, you must register functions in the `ActionRegistry`.
+
+```typescript
+// server/src/workflow/ActionRegistry.ts
+export const ActionRegistry = {
+  // Sync action (awaits completion)
+  logActivity: async (ctx, params) => {
+    await db.logs.create({ msg: params.message, entity: ctx.entity.id });
+  },
+  
+  // Async action (fire-and-forget)
+  sendEmail: async (ctx, params) => {
+    await mailer.send(ctx.entity.email, params.template);
+  }
+};
+```
+
+### 2. Using Actions in Schema
+
+In your JSON schema (or Builder UI), you can reference these actions in `onEnter`, `onExit`, or `transitions`.
+
+```json
+"onEnter": [
+  {
+    "type": "sendEmail",
+    "mode": "async", 
+    "params": { "template": "welcome_email" }
+  }
+]
+```
+
+*   **Sync Mode**: The workflow waits for the action to finish. If it fails, the transition might abort (depending on implementation).
+*   **Async Mode**: The workflow triggers the action in the background and continues immediately.
+
+### 3. Declarative Conditions (Guards)
+
+Instead of writing code functions, you can define transition rules using JSON. The `WorkflowFactory` compiles these into validation functions.
+
+```json
+"conditions": [
+  {
+    "field": "entity.amount",
+    "operator": "gt",
+    "value": 1000
+  },
+  {
+    "field": "user.role",
+    "operator": "eq",
+    "value": "MANAGER"
+  }
+]
+```
+
+Supported operators: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `contains`.
+
 ---
 
 ## Structure
@@ -117,6 +179,7 @@ if (success) {
 - **`WorkflowDefinition.ts`**: Fluent API for constructing state machines.
 - **`WorkflowInstance.ts`**: Runtime wrapper around the StateMachine for specific contexts.
 - **`WorkflowFactory.ts`**: Generic factory for instantiating workflows.
+- **`ActionRegistry.ts`**: Central registry for available side-effect functions.
 
 ## Visual Overview
 
